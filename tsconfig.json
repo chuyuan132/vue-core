@@ -1,11 +1,11 @@
 {
   "compilerOptions": {
-    "module": "NodeNext",
+    "module": "nodenext",
     "target": "es2020",
     "lib": ["ES6", "DOM"],
     "types": ["jest"],
     "esModuleInterop": true,
-    "moduleResolution": "NodeNext",
+    "moduleResolution": "nodenext",
     "strict": true,
     "skipLibCheck": true,
     "isolatedModules": true,
@@ -14,5 +14,5 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src/**/*","__tests__/**/*"]
+  "include": ["src/**/*","__tests__/**/*", "test/**/*"]
 }
