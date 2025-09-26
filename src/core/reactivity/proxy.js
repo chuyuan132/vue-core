@@ -8,6 +8,22 @@ const triggerType = {
   DELETE: 'DELETE',
 }
 
+// 存到原始对象与代理对象的映射
+const proxyMap = new WeakMap()
+
+// 重写数组方法
+const arrayInstrumentations = {}
+;[('includes', 'indexOf', 'lastIndexOf')].forEach((fn) => {
+  arrayInstrumentations[fn] = function (...args) {
+    const originMethod = Array.prototype[fn]
+    const result = originMethod.apply(this, args)
+    if (!result || result === -1) {
+      return originMethod.apply(this.raw, args)
+    }
+    return result
+  }
+})
+
 function effect(fn, options = {}) {
   function effectFn() {
     clean(effectFn)
@@ -59,27 +75,34 @@ function clean(effectFn) {
  * @param {*} isShallow 是否浅代理
  * @returns
  */
-function createReactive(obj, isShallow = false, isReadonly = false) {
+function createReactive(
+  obj,
+  options = { isShallow: false, isReadonly: false },
+) {
   return new Proxy(obj, {
     get(target, key, receiver) {
       if (key === 'raw') {
         return target
       }
+
+      if (arrayInstrumentations.hasOwnProperty(key)) {
+        return Reflect.get(arrayInstrumentations, key, receiver)
+      }
+
       // 非只读才收集依赖, 数组的for of 会读取到symbol，会导致某些判断报错，需要避免
-      if (!isReadonly && typeof key !== 'symbol') {
+      if (!options.isReadonly && typeof key !== 'symbol') {
         track(target, key)
       }
+
       const result = Reflect.get(target, key, receiver)
-      if (!isShallow) {
-        if (result !== null && typeof result === 'object') {
-          return reactive(result, isShallow, isReadonly)
-        }
+      if (!options.isShallow && result !== null && typeof result === 'object') {
+        return reactive(result, options)
       }
       return result
     },
     set(target, key, value, receiver) {
       // 只读给出警告提示
-      if (isReadonly) {
+      if (options.isReadonly) {
         console.warn(`${key} is readonly`)
         return
       }
@@ -108,7 +131,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
       return Reflect.has(target, key, receiver)
     },
     deleteProperty(target, key) {
-      if (isReadonly) {
+      if (isReadonly.isReadonly) {
         console.warn(`${key} is readonly`)
         return
       }
@@ -124,6 +147,15 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
       return Reflect.ownKeys(target)
     },
   })
+}
+
+function getReactive(...args) {
+  const [target] = args
+  const existedProxy = proxyMap.get(target)
+  if (existedProxy) return existedProxy
+  const proxyObj = createReactive(...args)
+  proxyMap.set(target, proxyObj)
+  return proxyObj
 }
 
 function track(target, key) {
@@ -187,7 +219,10 @@ function trigger(target, key, type, newValue) {
  * @returns
  */
 function reactive(obj) {
-  return createReactive(obj, false, false)
+  return getReactive(obj, {
+    isShallow: false,
+    isReadonly: false,
+  })
 }
 
 /**
@@ -196,7 +231,10 @@ function reactive(obj) {
  * @returns
  */
 function shallowReactive(obj) {
-  return createReactive(obj, true)
+  return getReactive(obj, {
+    isShallow: true,
+    isReadonly: false,
+  })
 }
 
 /**
@@ -205,7 +243,10 @@ function shallowReactive(obj) {
  * @returns
  */
 function readonly(obj) {
-  return createReactive(obj, false, true)
+  return getReactive(obj, {
+    isShallow: false,
+    isReadonly: true,
+  })
 }
 
 /**
@@ -214,7 +255,10 @@ function readonly(obj) {
  * @returns
  */
 function shallowReadonly(obj) {
-  return createReactive(obj, true)
+  return getReactive(obj, {
+    isShallow: true,
+    isReadonly: true,
+  })
 }
 
 export {
