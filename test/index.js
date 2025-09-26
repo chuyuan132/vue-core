@@ -153,3 +153,17 @@ import watch from '../src/core/reactivity/watch'
 // })
 
 // proxy.name.age = 3
+
+// --------------------------------数组代理
+
+const arr = [1, 2, 3]
+const proxy = reactive(arr)
+
+effect(() => {
+  for (const item of proxy) {
+    console.log(item)
+  }
+})
+
+// proxy[0] = 2
+proxy.length = 5

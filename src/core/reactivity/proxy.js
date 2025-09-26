@@ -43,6 +43,14 @@ function clean(effectFn) {
  *  4、for in 循环读取
  *  5、对象本体和原型链对象都是响应式变量，set的时候，不需要触发两次，虽然在trigger里也有用set兜底
  *  6、实现深响应式和浅响应式，深可读和浅可读
+ * array
+ *  1、set考虑两种情况：
+ *      set大于length的索引，会自动更新length， 因此有访问length的副作用函数要重新执行
+ *      手动set length属性的时候，大于等于length的索引会被删除，因此需要有条件的触发索引依赖函数
+ *  2、for in循环，可以设置成length的依赖，因为很多时候修改数组的本质都是更新length
+ *  3、delete 元素，意味着是delete操作，进入trigger会触发当前索引的依赖函数以及length依赖
+ *  4、for of 会读取元素的索引和length，不需要改动代码，第一点已经实现了
+ *
  */
 
 /**
@@ -57,14 +65,14 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
       if (key === 'raw') {
         return target
       }
-      // 非只读才收集依赖
-      if (!isReadonly) {
+      // 非只读才收集依赖, 数组的for of 会读取到symbol，会导致某些判断报错，需要避免
+      if (!isReadonly && typeof key !== 'symbol') {
         track(target, key)
       }
       const result = Reflect.get(target, key, receiver)
       if (!isShallow) {
         if (result !== null && typeof result === 'object') {
-          return reactive(result, isShallow)
+          return reactive(result, isShallow, isReadonly)
         }
       }
       return result
@@ -78,10 +86,20 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
       // 避免原型链重复触发
       if (receiver.raw !== target) return
       const oldValue = target[key]
+
+      // 如果是对象，判断如果是新增或者删除，for in循环需要重新执行
+      // 如果是数组, key === 索引的时候会判断是不是add，如果key === ‘length’的时候直接无脑set，在trigger里再判断需不需要触发索引依赖函数
+      const type = Array.isArray(target)
+        ? key >= target.length
+          ? triggerType.ADD
+          : triggerType.SET
+        : Object.prototype.hasOwnProperty.call(target, key)
+          ? triggerType.SET
+          : triggerType.ADD
       const result = Reflect.set(target, key, value, receiver)
+      // 值不相等才需要执行，同时要处理nan情况 nan !== nan  = true nan === nan = false
       if (value !== oldValue && (value === value || oldValue === oldValue)) {
-        const type = target[key] ? triggerType.SET : triggerType.ADD
-        trigger(target, key, type)
+        trigger(target, key, type, value)
       }
       return result
     },
@@ -102,7 +120,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
       return result
     },
     ownKeys(target) {
-      track(target, TRANCK_KEY)
+      track(target, Array.isArray(target) ? 'length' : TRANCK_KEY)
       return Reflect.ownKeys(target)
     },
   })
@@ -124,18 +142,37 @@ function track(target, key) {
   activeEffect.deps.push(deps)
 }
 
-function trigger(target, key, type) {
+function trigger(target, key, type, newValue) {
   const depsMap = bucket.get(target)
   if (!depsMap) return
   const deps = depsMap.get(key)
-  const effects = new Set(deps)
-  if ([triggerType.ADD, triggerType.DELETE].includes(type)) {
-    effects.add(...(depsMap.get(TRANCK_KEY) || []))
+  const effects = new Set()
+  effects.add(deps)
+  // 虽然当前触发的是length依赖集合，但是大于length的索引的依赖集合也应该被触发，因为类似于被删除了
+  if (Array.isArray(target) && key === 'length') {
+    for (const [key, fns] of depsMap.entries()) {
+      if (key >= newValue) {
+        fns.forEach((fn) => {
+          if (fn !== activeEffect) {
+            effects.add(fn)
+          }
+        })
+      }
+    }
   }
+  // 额外执行的
+  if ([triggerType.ADD, triggerType.DELETE].includes(type)) {
+    if (Object.prototype.toString.call(target) === '[object Object]') {
+      effects.add(...(depsMap.get(TRANCK_KEY) || []))
+    } else if (Array.isArray(target)) {
+      effects.add(...(depsMap.get('length') || []))
+    }
+  }
+
   effects &&
     effects.forEach((fn) => {
       if (fn !== activeEffect) {
-        if (fn.options.scheduler) {
+        if (fn.options?.scheduler) {
           fn.options.scheduler(fn)
         } else {
           fn()
