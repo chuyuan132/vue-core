@@ -1,5 +1,5 @@
 import computed from '../src/core/reactivity/computed'
-import { effect, reactive } from '../src/core/reactivity/proxy'
+import { effect, reactive, shallowReactive } from '../src/core/reactivity/proxy'
 import watch from '../src/core/reactivity/watch'
 
 // -----------------------------------三元表达式测试------------------------------------
@@ -78,14 +78,78 @@ import watch from '../src/core/reactivity/watch'
 
 // proxy.count++
 // ------------------------------------------------对象代理   in操作符读取---------------------------------------------
-const obj = {
-  count: 1,
-  name: '张三',
-}
+// const obj = {
+//   count: 1,
+//   name: '张三',
+// }
 
-const proxy = reactive(obj)
-effect(() => {
-  console.log('count' in proxy)
-})
+// const proxy = reactive(obj)
+// effect(() => {
+//   console.log('count' in proxy)
+// })
 
-delete proxy.count
+// delete proxy.count
+
+// ------------------------------------------------对象代理 for  in操作符读取---------------------------------------------
+// const obj = {
+//   count: 1,
+//   name: '张三',
+// }
+
+// const proxy = reactive(obj)
+// effect(() => {
+//   for (const key in proxy) {
+//     console.log(key)
+//   }
+// })
+
+// delete proxy.count
+// ------------------------------------------------对象代理 原型链代理---------------------------------------------
+// const obj = {
+//   count: 1,
+// }
+
+// const parent = {
+//   name: '张三',
+// }
+
+// const parentProxy = reactive(parent)
+// const objProxy = reactive(obj)
+// Object.setPrototypeOf(objProxy, parentProxy)
+
+// effect(() => {
+//   console.log(objProxy.name)
+// })
+
+// objProxy.name = '22'
+
+// ---------------------------------------------------深代理------------------------------------------------
+// const obj = {
+//   count: 1,
+//   name: {
+//     age: 2,
+//   },
+// }
+
+// const proxy = reactive(obj)
+
+// effect(() => {
+//   console.log(proxy.name.age)
+// })
+
+// proxy.name.age = 3
+// --------------------------------------------------浅代理-------------------------------------------------
+// const obj = {
+//   count: 1,
+//   name: {
+//     age: 2,
+//   },
+// }
+
+// const proxy = shallowReactive(obj)
+
+// effect(() => {
+//   console.log(proxy.name.age)
+// })
+
+// proxy.name.age = 3
